@@ -402,6 +402,15 @@
 
   function playVideo(item) {
     const url = `/stream?path=${encodeURIComponent(item.relativePath)}`;
+
+    // Remove existing tracks then inject subtitle track
+    videoPlayer.querySelectorAll('track').forEach(t => t.remove());
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.src = `/subtitle?path=${encodeURIComponent(item.relativePath)}`;
+    track.default = true;
+    videoPlayer.appendChild(track);
+
     videoPlayer.src = url;
     playerTitle.textContent = item.name;
     playerOverlay.classList.add('active');

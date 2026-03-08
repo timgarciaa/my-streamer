@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -12,6 +13,7 @@ const VIDEOS_DIR = process.env.VIDEOS_DIR || path.join(os.homedir(), 'Videos');
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+const SUBTITLE_EXTENSIONS = new Set(['.srt', '.vtt']);
 
 function isVideo(filename) {
   return VIDEO_EXTENSIONS.has(path.extname(filename).toLowerCase());
@@ -141,6 +143,37 @@ app.get('/stream', (req, res) => {
     });
     fs.createReadStream(fullPath).pipe(res);
   }
+});
+
+// Subtitle serving (VTT or SRT→VTT on the fly)
+app.get('/subtitle', (req, res) => {
+  const subPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, subPath));
+
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+
+  const base = fullPath.replace(/\.[^.]+$/, '');
+
+  const vttPath = base + '.vtt';
+  if (fs.existsSync(vttPath)) {
+    res.setHeader('Content-Type', 'text/vtt');
+    return fs.createReadStream(vttPath).pipe(res);
+  }
+
+  const srtPath = base + '.srt';
+  if (fs.existsSync(srtPath)) {
+    const srt = fs.readFileSync(srtPath, 'utf8');
+    const vtt = 'WEBVTT\n\n' + srt
+      .replace(/\r\n/g, '\n')
+      .replace(/^\d+\n/gm, '')
+      .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+    res.setHeader('Content-Type', 'text/vtt');
+    return res.send(vtt);
+  }
+
+  res.status(404).send('No subtitle found');
 });
 
 // Thumbnail/image serving
