@@ -1,0 +1,177 @@
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const mime = require('mime-types');
+const os = require('os');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configure your videos directory here
+const VIDEOS_DIR = process.env.VIDEOS_DIR || path.join(os.homedir(), 'Videos');
+
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.m2ts']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+
+function isVideo(filename) {
+  return VIDEO_EXTENSIONS.has(path.extname(filename).toLowerCase());
+}
+
+function isImage(filename) {
+  return IMAGE_EXTENSIONS.has(path.extname(filename).toLowerCase());
+}
+
+function getNetworkIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+// Serve static frontend
+app.use(express.static(path.join(__dirname, 'public')));
+
+// API: list directory contents
+app.get('/api/browse', (req, res) => {
+  const subPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, subPath));
+
+  // Security: prevent path traversal outside VIDEOS_DIR
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).json({ error: 'Directory not found' });
+  }
+
+  const stat = fs.statSync(fullPath);
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: 'Not a directory' });
+  }
+
+  try {
+    const entries = fs.readdirSync(fullPath);
+    const items = entries
+      .map(name => {
+        const itemPath = path.join(fullPath, name);
+        let itemStat;
+        try {
+          itemStat = fs.statSync(itemPath);
+        } catch {
+          return null;
+        }
+        const ext = path.extname(name).toLowerCase();
+        const isDir = itemStat.isDirectory();
+        if (!isDir && !isVideo(name) && !isImage(name)) return null;
+
+        return {
+          name,
+          type: isDir ? 'directory' : 'file',
+          ext: isDir ? null : ext,
+          size: isDir ? null : itemStat.size,
+          mtime: itemStat.mtime,
+          relativePath: path.join(subPath, name).replace(/\\/g, '/'),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+    res.json({
+      currentPath: subPath,
+      parentPath: subPath ? path.dirname(subPath).replace(/\\/g, '/') : null,
+      items,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Video streaming with range support
+app.get('/stream', (req, res) => {
+  const subPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, subPath));
+
+  // Security: prevent path traversal
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('File not found');
+  }
+
+  const stat = fs.statSync(fullPath);
+  if (!stat.isFile()) {
+    return res.status(400).send('Not a file');
+  }
+
+  const fileSize = stat.size;
+  const mimeType = mime.lookup(fullPath) || 'video/mp4';
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunkSize = end - start + 1;
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': mimeType,
+    });
+
+    const stream = fs.createReadStream(fullPath, { start, end });
+    stream.pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+    });
+    fs.createReadStream(fullPath).pipe(res);
+  }
+});
+
+// Thumbnail/image serving
+app.get('/image', (req, res) => {
+  const subPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, subPath));
+
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(fullPath) || !isImage(fullPath)) {
+    return res.status(404).send('Not found');
+  }
+
+  const mimeType = mime.lookup(fullPath) || 'image/jpeg';
+  res.setHeader('Content-Type', mimeType);
+  fs.createReadStream(fullPath).pipe(res);
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  const ip = getNetworkIP();
+  console.log('');
+  console.log('  My Streamer is running!');
+  console.log('');
+  console.log(`  Local:    http://localhost:${PORT}`);
+  console.log(`  Network:  http://${ip}:${PORT}`);
+  console.log('');
+  console.log(`  Videos directory: ${VIDEOS_DIR}`);
+  console.log('');
+  console.log('  Share the Network URL with your TV, phone, or tablet.');
+  console.log('  Press Ctrl+C to stop.');
+  console.log('');
+});

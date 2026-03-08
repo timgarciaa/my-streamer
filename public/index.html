@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Streamer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #23232f;
+      --border: #2e2e3e;
+      --accent: #7c6af5;
+      --accent-hover: #9485ff;
+      --text: #e8e8f0;
+      --text-muted: #888899;
+      --danger: #e05555;
+      --radius: 10px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 16px;
+    }
+
+    /* ── Layout ── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    #breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      overflow: hidden;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    #breadcrumb span { cursor: pointer; }
+    #breadcrumb span:hover { color: var(--accent); }
+    #breadcrumb .sep { opacity: 0.4; }
+    #breadcrumb .current { color: var(--text); cursor: default; }
+
+    main {
+      flex: 1;
+      padding: 24px;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+      overflow: hidden;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(124, 106, 245, 0.18);
+    }
+
+    .card-thumb {
+      width: 100%;
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface2);
+      font-size: 3rem;
+    }
+
+    .card-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .card-info {
+      padding: 10px 12px;
+    }
+
+    .card-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    /* ── Player overlay ── */
+    #player-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 200;
+      flex-direction: column;
+    }
+
+    #player-overlay.active {
+      display: flex;
+    }
+
+    #player-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #player-title {
+      flex: 1;
+      font-size: 1rem;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #close-player {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    #close-player:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    #player-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      min-height: 0;
+    }
+
+    #video-player {
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      border-radius: var(--radius);
+      background: #000;
+      outline: none;
+    }
+
+    /* ── Empty / error states ── */
+    .empty {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty .icon { font-size: 4rem; margin-bottom: 16px; }
+    .empty h2 { font-size: 1.2rem; margin-bottom: 8px; color: var(--text); }
+    .empty p { font-size: 0.9rem; line-height: 1.5; }
+    .empty code {
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    /* ── Loading ── */
+    #loading {
+      display: none;
+      text-align: center;
+      padding: 60px;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      header { padding: 0 14px; }
+      main { padding: 14px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    }
+
+    @media (min-width: 1200px) {
+      .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">&#9654; My Streamer</div>
+    <nav id="breadcrumb"></nav>
+  </header>
+
+  <main>
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+    <div id="grid-container" class="grid"></div>
+  </main>
+</div>
+
+<div id="player-overlay">
+  <div id="player-header">
+    <button id="close-player" title="Close (Esc)">&#x2715;</button>
+    <div id="player-title"></div>
+  </div>
+  <div id="player-wrap">
+    <video id="video-player" controls autoplay>
+      Your browser does not support video playback.
+    </video>
+  </div>
+</div>
+
+<script>
+  const grid = document.getElementById('grid-container');
+  const loading = document.getElementById('loading');
+  const breadcrumb = document.getElementById('breadcrumb');
+  const playerOverlay = document.getElementById('player-overlay');
+  const videoPlayer = document.getElementById('video-player');
+  const playerTitle = document.getElementById('player-title');
+  const closeBtn = document.getElementById('close-player');
+
+  let currentPath = '';
+
+  function formatSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function fileIcon(ext) {
+    const map = {
+      '.mp4': '🎬', '.mkv': '🎬', '.avi': '🎬', '.mov': '🎬',
+      '.wmv': '🎬', '.flv': '🎬', '.webm': '🎬', '.m4v': '🎬',
+      '.ts': '🎬', '.m2ts': '🎬',
+    };
+    return map[ext] || '🎞️';
+  }
+
+  function buildBreadcrumb(currentPath) {
+    breadcrumb.innerHTML = '';
+
+    const root = document.createElement('span');
+    root.textContent = 'Home';
+    root.addEventListener('click', () => browse(''));
+    breadcrumb.appendChild(root);
+
+    if (!currentPath) return;
+
+    const parts = currentPath.split('/').filter(Boolean);
+    parts.forEach((part, i) => {
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '/';
+      breadcrumb.appendChild(sep);
+
+      const seg = document.createElement('span');
+      seg.textContent = part;
+
+      if (i === parts.length - 1) {
+        seg.className = 'current';
+      } else {
+        const segPath = parts.slice(0, i + 1).join('/');
+        seg.addEventListener('click', () => browse(segPath));
+      }
+      breadcrumb.appendChild(seg);
+    });
+  }
+
+  async function browse(subPath) {
+    currentPath = subPath || '';
+    grid.innerHTML = '';
+    loading.style.display = 'block';
+
+    buildBreadcrumb(currentPath);
+
+    try {
+      const res = await fetch(`/api/browse?path=${encodeURIComponent(currentPath)}`);
+      const data = await res.json();
+      loading.style.display = 'none';
+
+      if (data.error) {
+        grid.innerHTML = `<div class="empty"><div class="icon">⚠️</div><h2>Error</h2><p>${data.error}</p></div>`;
+        return;
+      }
+
+      if (data.items.length === 0) {
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">📂</div><h2>No videos found</h2><p>This folder is empty or has no supported video files.</p></div>`;
+        return;
+      }
+
+      data.items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const thumb = document.createElement('div');
+        thumb.className = 'card-thumb';
+        thumb.textContent = item.type === 'directory' ? '📁' : fileIcon(item.ext);
+
+        const info = document.createElement('div');
+        info.className = 'card-info';
+
+        const name = document.createElement('div');
+        name.className = 'card-name';
+        name.title = item.name;
+        name.textContent = item.name;
+
+        const meta = document.createElement('div');
+        meta.className = 'card-meta';
+        meta.textContent = item.type === 'directory' ? 'Folder' : (item.ext.replace('.', '').toUpperCase() + (item.size ? '  ·  ' + formatSize(item.size) : ''));
+
+        info.appendChild(name);
+        info.appendChild(meta);
+        card.appendChild(thumb);
+        card.appendChild(info);
+
+        card.addEventListener('click', () => {
+          if (item.type === 'directory') {
+            browse(item.relativePath);
+          } else {
+            playVideo(item);
+          }
+        });
+
+        grid.appendChild(card);
+      });
+
+    } catch (err) {
+      loading.style.display = 'none';
+      grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">⚠️</div><h2>Could not load</h2><p>${err.message}</p></div>`;
+    }
+  }
+
+  function playVideo(item) {
+    const url = `/stream?path=${encodeURIComponent(item.relativePath)}`;
+    videoPlayer.src = url;
+    playerTitle.textContent = item.name;
+    playerOverlay.classList.add('active');
+    videoPlayer.play().catch(() => {});
+  }
+
+  function closePlayer() {
+    videoPlayer.pause();
+    videoPlayer.src = '';
+    playerOverlay.classList.remove('active');
+  }
+
+  closeBtn.addEventListener('click', closePlayer);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && playerOverlay.classList.contains('active')) {
+      closePlayer();
+    }
+  });
+
+  // Start at root
+  browse('');
+</script>
+</body>
+</html>
