@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Streamer</title>
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -197,9 +198,21 @@
       max-width: 100%;
       max-height: 100%;
       width: 100%;
-      border-radius: var(--radius);
-      background: #000;
       outline: none;
+    }
+
+    /* Plyr theme overrides */
+    :root {
+      --plyr-color-main: var(--accent);
+      --plyr-video-background: #000;
+      --plyr-border-radius: var(--radius);
+    }
+
+    .plyr {
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      border-radius: var(--radius);
     }
 
     /* ── Empty / error states ── */
@@ -273,12 +286,13 @@
     <div id="player-title"></div>
   </div>
   <div id="player-wrap">
-    <video id="video-player" controls autoplay>
+    <video id="video-player" autoplay>
       Your browser does not support video playback.
     </video>
   </div>
 </div>
 
+<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <script>
   const grid = document.getElementById('grid-container');
   const loading = document.getElementById('loading');
@@ -287,6 +301,13 @@
   const videoPlayer = document.getElementById('video-player');
   const playerTitle = document.getElementById('player-title');
   const closeBtn = document.getElementById('close-player');
+
+  const player = new Plyr(videoPlayer, {
+    controls: ['play-large','play','rewind','fast-forward','progress','current-time','duration','mute','volume','captions','settings','fullscreen'],
+    settings: ['speed','captions'],
+    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+    keyboard: { focused: true, global: true },
+  });
 
   let currentPath = '';
   let currentItem = null;
@@ -434,11 +455,11 @@
     videoPlayer.src = url;
     playerTitle.textContent = item.name;
     playerOverlay.classList.add('active');
-    videoPlayer.play().catch(() => {});
+    player.play().catch(() => {});
   }
 
   function closePlayer() {
-    videoPlayer.pause();
+    player.pause();
     videoPlayer.src = '';
     playerOverlay.classList.remove('active');
     currentItem = null;
