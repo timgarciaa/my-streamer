@@ -289,6 +289,25 @@
   const closeBtn = document.getElementById('close-player');
 
   let currentPath = '';
+  let currentItem = null;
+  let pendingSeek = false;
+
+  function isBuffered(video, time) {
+    for (let i = 0; i < video.buffered.length; i++) {
+      if (time >= video.buffered.start(i) - 0.5 && time <= video.buffered.end(i) + 0.5) return true;
+    }
+    return false;
+  }
+
+  videoPlayer.addEventListener('seeking', () => {
+    if (pendingSeek || !currentItem) return;
+    const t = videoPlayer.currentTime;
+    if (!isBuffered(videoPlayer, t)) {
+      pendingSeek = true;
+      videoPlayer.src = `/stream?transcode=1&start=${t}&path=${encodeURIComponent(currentItem.relativePath)}`;
+      videoPlayer.addEventListener('canplay', () => { pendingSeek = false; }, { once: true });
+    }
+  });
 
   function formatSize(bytes) {
     if (!bytes) return '';
@@ -401,6 +420,7 @@
   }
 
   function playVideo(item) {
+    currentItem = item;
     const url = `/stream?transcode=1&path=${encodeURIComponent(item.relativePath)}`;
 
     // Remove existing tracks then inject subtitle track
@@ -421,6 +441,8 @@
     videoPlayer.pause();
     videoPlayer.src = '';
     playerOverlay.classList.remove('active');
+    currentItem = null;
+    pendingSeek = false;
   }
 
   closeBtn.addEventListener('click', closePlayer);

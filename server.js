@@ -121,11 +121,15 @@ app.get('/stream', (req, res) => {
   if (req.query.transcode) {
     res.writeHead(200, { 'Content-Type': 'video/mp4' });
 
+    const startSec = parseFloat(req.query.start) || 0;
+
     const ffmpeg = spawn('ffmpeg', [
+      '-ss', String(startSec),
       '-i', fullPath,
       '-vcodec', 'copy',
       '-acodec', 'aac',
       '-ac', '2',
+      '-output_ts_offset', String(startSec),
       '-movflags', 'frag_keyframe+empty_moov',
       '-f', 'mp4',
       'pipe:1',
