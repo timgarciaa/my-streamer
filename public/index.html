@@ -401,7 +401,7 @@
   }
 
   function playVideo(item) {
-    const url = `/stream?path=${encodeURIComponent(item.relativePath)}`;
+    const url = `/stream?transcode=1&path=${encodeURIComponent(item.relativePath)}`;
 
     // Remove existing tracks then inject subtitle track
     videoPlayer.querySelectorAll('track').forEach(t => t.remove());

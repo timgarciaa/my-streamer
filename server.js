@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const mime = require('mime-types');
 const os = require('os');
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -116,6 +117,27 @@ app.get('/stream', (req, res) => {
     return res.status(400).send('Not a file');
   }
 
+  // Transcoded mode: re-encode audio to stereo AAC, mux into fragmented MP4
+  if (req.query.transcode) {
+    res.writeHead(200, { 'Content-Type': 'video/mp4' });
+
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', fullPath,
+      '-vcodec', 'copy',
+      '-acodec', 'aac',
+      '-ac', '2',
+      '-movflags', 'frag_keyframe+empty_moov',
+      '-f', 'mp4',
+      'pipe:1',
+    ]);
+
+    ffmpeg.stdout.pipe(res);
+    ffmpeg.stderr.on('data', () => {}); // suppress ffmpeg log output
+
+    req.on('close', () => ffmpeg.kill());
+    return;
+  }
+
   const fileSize = stat.size;
   const mimeType = mime.lookup(fullPath) || 'video/mp4';
   const range = req.headers.range;
@@ -193,6 +215,15 @@ app.get('/image', (req, res) => {
   res.setHeader('Content-Type', mimeType);
   fs.createReadStream(fullPath).pipe(res);
 });
+
+// Warn if ffmpeg is not available (needed for audio transcoding)
+try {
+  execSync('which ffmpeg', { stdio: 'ignore' });
+} catch {
+  console.warn('  WARNING: ffmpeg not found in PATH. Audio transcoding will not work.');
+  console.warn('  Install it with: brew install ffmpeg');
+  console.warn('');
+}
 
 app.listen(PORT, '0.0.0.0', () => {
   const ip = getNetworkIP();
