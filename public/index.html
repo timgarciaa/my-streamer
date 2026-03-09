@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Streamer</title>
-  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -78,6 +77,14 @@
       max-width: 1600px;
       width: 100%;
       margin: 0 auto;
+    }
+
+    /* ── Count bar ── */
+    #count-bar {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      min-height: 1.2em;
     }
 
     /* ── Grid ── */
@@ -169,7 +176,13 @@
       white-space: nowrap;
     }
 
-    #close-player {
+    #player-duration {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    #close-player, #prev-btn, #next-btn {
       background: none;
       border: none;
       color: var(--text-muted);
@@ -180,9 +193,19 @@
       border-radius: 6px;
     }
 
-    #close-player:hover {
+    #close-player:hover, #prev-btn:hover, #next-btn:hover {
       background: var(--surface2);
       color: var(--text);
+    }
+
+    #prev-btn:disabled, #next-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    #prev-btn:disabled:hover, #next-btn:disabled:hover {
+      background: none;
+      color: var(--text-muted);
     }
 
     #player-wrap {
@@ -199,19 +222,6 @@
       max-height: 100%;
       width: 100%;
       outline: none;
-    }
-
-    /* Plyr theme overrides */
-    :root {
-      --plyr-color-main: var(--accent);
-      --plyr-video-background: #000;
-      --plyr-border-radius: var(--radius);
-    }
-
-    .plyr {
-      max-width: 100%;
-      max-height: 100%;
-      width: 100%;
       border-radius: var(--radius);
     }
 
@@ -276,6 +286,7 @@
       <div class="spinner"></div>
       <p>Loading...</p>
     </div>
+    <div id="count-bar"></div>
     <div id="grid-container" class="grid"></div>
   </main>
 </div>
@@ -283,34 +294,35 @@
 <div id="player-overlay">
   <div id="player-header">
     <button id="close-player" title="Close (Esc)">&#x2715;</button>
+    <button id="prev-btn" title="Previous" disabled>&#10094;</button>
+    <button id="next-btn" title="Next" disabled>&#10095;</button>
     <div id="player-title"></div>
+    <span id="player-duration"></span>
   </div>
   <div id="player-wrap">
-    <video id="video-player" autoplay>
+    <video id="video-player" autoplay controls>
       Your browser does not support video playback.
     </video>
   </div>
 </div>
 
-<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <script>
   const grid = document.getElementById('grid-container');
   const loading = document.getElementById('loading');
   const breadcrumb = document.getElementById('breadcrumb');
+  const countBar = document.getElementById('count-bar');
   const playerOverlay = document.getElementById('player-overlay');
   const videoPlayer = document.getElementById('video-player');
   const playerTitle = document.getElementById('player-title');
+  const playerDuration = document.getElementById('player-duration');
   const closeBtn = document.getElementById('close-player');
-
-  const player = new Plyr(videoPlayer, {
-    controls: ['play-large','play','rewind','fast-forward','progress','current-time','duration','mute','volume','captions','settings','fullscreen'],
-    settings: ['speed','captions'],
-    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-    keyboard: { focused: true, global: true },
-  });
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
 
   let currentPath = '';
   let currentItem = null;
+  let currentItems = [];
+  let currentIndex = -1;
   let pendingSeek = false;
 
   function isBuffered(video, time) {
@@ -335,6 +347,18 @@
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
+  function formatDuration(ms) {
+    if (!ms) return '';
+    const totalSec = Math.round(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
   function fileIcon(ext) {
@@ -379,6 +403,7 @@
   async function browse(subPath) {
     currentPath = subPath || '';
     grid.innerHTML = '';
+    countBar.textContent = '';
     loading.style.display = 'block';
 
     buildBreadcrumb(currentPath);
@@ -397,6 +422,15 @@
         grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">📂</div><h2>No videos found</h2><p>This folder is empty or has no supported video files.</p></div>`;
         return;
       }
+
+      const folders = data.items.filter(i => i.type === 'directory');
+      const files = data.items.filter(i => i.type === 'file');
+      currentItems = files;
+
+      const parts = [];
+      if (folders.length > 0) parts.push(`${folders.length} folder${folders.length !== 1 ? 's' : ''}`);
+      if (files.length > 0) parts.push(`${files.length} video${files.length !== 1 ? 's' : ''}`);
+      countBar.textContent = parts.join(' · ');
 
       data.items.forEach(item => {
         const card = document.createElement('div');
@@ -440,8 +474,16 @@
     }
   }
 
+  function updateNavButtons() {
+    prevBtn.disabled = currentIndex <= 0;
+    nextBtn.disabled = currentIndex >= currentItems.length - 1;
+  }
+
   function playVideo(item) {
     currentItem = item;
+    currentIndex = currentItems.indexOf(item);
+    updateNavButtons();
+
     const url = `/stream?transcode=1&path=${encodeURIComponent(item.relativePath)}`;
 
     // Remove existing tracks then inject subtitle track
@@ -454,19 +496,34 @@
 
     videoPlayer.src = url;
     playerTitle.textContent = item.name;
+    playerDuration.textContent = '';
     playerOverlay.classList.add('active');
-    player.play().catch(() => {});
+    videoPlayer.play().catch(() => {});
+
+    fetch(`/api/duration?path=${encodeURIComponent(item.relativePath)}`)
+      .then(r => r.json())
+      .then(d => { playerDuration.textContent = formatDuration(d.durationMs); })
+      .catch(() => {});
   }
 
   function closePlayer() {
-    player.pause();
+    videoPlayer.pause();
     videoPlayer.src = '';
     playerOverlay.classList.remove('active');
     currentItem = null;
+    playerDuration.textContent = '';
     pendingSeek = false;
   }
 
   closeBtn.addEventListener('click', closePlayer);
+
+  prevBtn.addEventListener('click', () => {
+    if (currentIndex > 0) playVideo(currentItems[currentIndex - 1]);
+  });
+
+  nextBtn.addEventListener('click', () => {
+    if (currentIndex < currentItems.length - 1) playVideo(currentItems[currentIndex + 1]);
+  });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && playerOverlay.classList.contains('active')) {
