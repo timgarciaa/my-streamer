@@ -30,3 +30,6 @@ android/**/*.dex
 android/**/*.ap_
 android/**/*.apk
 android/**/*.aab
+
+# Misplaced SDK directory created by unexpanded ~ in local.properties
+android/~/
