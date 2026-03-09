@@ -191,6 +191,86 @@ app.get('/stream', (req, res) => {
   }
 });
 
+// HLS playlist endpoint
+app.get('/hls/playlist', (req, res) => {
+  const relPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, relPath));
+
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('File not found');
+  }
+
+  const args = ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', fullPath];
+  const probe = spawn('ffprobe', args);
+  let output = '';
+  probe.stdout.on('data', d => { output += d.toString(); });
+  probe.on('close', () => {
+    const totalSec = parseFloat(output.trim());
+    if (isNaN(totalSec)) return res.status(500).send('Could not determine duration');
+
+    const segDur = 10;
+    const numSegs = Math.ceil(totalSec / segDur);
+    const encodedPath = encodeURIComponent(relPath);
+
+    let m3u8 = '#EXTM3U\n';
+    m3u8 += '#EXT-X-VERSION:3\n';
+    m3u8 += `#EXT-X-TARGETDURATION:${segDur}\n`;
+    m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
+
+    for (let i = 0; i < numSegs; i++) {
+      const start = i * segDur;
+      const dur = Math.min(segDur, totalSec - start);
+      m3u8 += `#EXTINF:${dur.toFixed(3)},\n`;
+      m3u8 += `/hls/segment?path=${encodedPath}&index=${i}\n`;
+    }
+
+    m3u8 += '#EXT-X-ENDLIST\n';
+
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(m3u8);
+  });
+});
+
+// HLS segment endpoint
+app.get('/hls/segment', (req, res) => {
+  const relPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, relPath));
+  const index = parseInt(req.query.index) || 0;
+
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('File not found');
+  }
+
+  const start = index * 10;
+
+  res.setHeader('Content-Type', 'video/mp2t');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  const ffmpeg = spawn('ffmpeg', [
+    '-ss', String(start),
+    '-i', fullPath,
+    '-t', '10',
+    '-vcodec', 'copy',
+    '-acodec', 'aac',
+    '-ac', '2',
+    '-f', 'mpegts',
+    'pipe:1',
+  ]);
+
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.stderr.on('data', () => {});
+  req.on('close', () => ffmpeg.kill());
+});
+
 // Subtitle serving (VTT or SRT→VTT on the fly)
 app.get('/subtitle', (req, res) => {
   const subPath = req.query.path || '';
@@ -199,6 +279,8 @@ app.get('/subtitle', (req, res) => {
   if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
     return res.status(403).send('Access denied');
   }
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
   const base = fullPath.replace(/\.[^.]+$/, '');
 
