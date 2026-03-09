@@ -9,7 +9,7 @@ class ServerPreferences(context: Context) {
 
     companion object {
         const val KEY_SERVER_URL = "server_url"
-        const val DEFAULT_URL = "http://192.168.100.13:3000"
+        const val DEFAULT_URL = "http://192.168.100.13:3001"
     }
 
     var serverUrl: String

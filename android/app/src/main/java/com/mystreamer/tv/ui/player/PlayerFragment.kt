@@ -67,7 +67,7 @@ class PlayerFragment : Fragment() {
 
     private fun loadMedia() {
         val baseUrl = serverPrefs.serverUrl
-        val hlsUrl = UrlBuilder.hlsUrl(baseUrl, filePath)
+        val streamUrl = UrlBuilder.streamUrl(baseUrl, filePath)
         val subtitleUrl = UrlBuilder.subtitleUrl(baseUrl, filePath)
 
         val subtitleConfig = SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
@@ -77,7 +77,7 @@ class PlayerFragment : Fragment() {
             .build()
 
         val mediaItem = MediaItem.Builder()
-            .setUri(Uri.parse(hlsUrl))
+            .setUri(Uri.parse(streamUrl))
             .setSubtitleConfigurations(listOf(subtitleConfig))
             .build()
 

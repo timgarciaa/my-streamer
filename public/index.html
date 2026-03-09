@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Streamer</title>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -151,185 +152,31 @@
       inset: 0;
       background: #000;
       z-index: 200;
+      align-items: center;
+      justify-content: center;
     }
 
     #player-overlay.active {
-      display: block;
+      display: flex;
     }
 
-    /* ── YouTube-style container ── */
-    #yt-container {
-      position: relative;
+    #player-overlay .plyr {
       width: 100%;
       height: 100%;
     }
 
-    #video-player {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: block;
-      outline: none;
-    }
-
-    #yt-controls {
+    #close-player {
       position: absolute;
-      inset: 0;
-      pointer-events: none;
-      transition: opacity 0.3s;
-    }
-
-    #yt-controls.yt-hidden {
-      opacity: 0;
-    }
-
-    #yt-controls > * {
-      pointer-events: auto;
-    }
-
-    /* Top bar */
-    #yt-top {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      align-items: center;
-      padding: 16px 20px 48px;
-      background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
-    }
-
-    #yt-title-text {
-      flex: 1;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #fff;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    /* Center controls */
-    #yt-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    /* Bottom bar */
-    #yt-bottom {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 48px 16px 12px;
-      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
-    }
-
-    /* Progress bar */
-    #yt-progress-wrap {
-      position: relative;
-      height: 4px;
-      cursor: pointer;
-      margin-bottom: 10px;
-      border-radius: 2px;
-      background: rgba(255,255,255,0.2);
-    }
-
-    #yt-progress-wrap:hover {
-      height: 6px;
-    }
-
-    #yt-buffered {
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 100%;
-      background: rgba(255,255,255,0.4);
-      border-radius: 2px;
-      pointer-events: none;
-    }
-
-    #yt-fill {
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 100%;
-      background: #ff0000;
-      border-radius: 2px;
-      pointer-events: none;
-    }
-
-    #yt-thumb {
-      position: absolute;
-      top: 50%;
-      transform: translate(-50%, -50%) scale(0);
-      width: 14px;
-      height: 14px;
-      background: #ff0000;
-      border-radius: 50%;
-      pointer-events: none;
-      transition: transform 0.1s;
-    }
-
-    #yt-progress-wrap:hover #yt-thumb {
-      transform: translate(-50%, -50%) scale(1);
-    }
-
-    /* Bar row */
-    #yt-bar-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    #yt-time {
-      font-size: 0.85rem;
-      color: #fff;
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* Buttons */
-    .yt-btn {
-      background: none;
+      top: 12px;
+      right: 16px;
+      z-index: 210;
+      background: rgba(0,0,0,0.5);
       border: none;
       color: #fff;
-      cursor: pointer;
       font-size: 1.4rem;
-      padding: 6px 10px;
+      cursor: pointer;
+      padding: 4px 10px;
       border-radius: 4px;
-      line-height: 1;
-      opacity: 0.9;
-      transition: opacity 0.15s, background 0.15s;
-    }
-
-    .yt-btn:hover {
-      opacity: 1;
-      background: rgba(255,255,255,0.15);
-    }
-
-    .yt-btn:disabled {
-      opacity: 0.3;
-      cursor: default;
-    }
-
-    .yt-btn:disabled:hover {
-      background: none;
-    }
-
-    #yt-center .yt-btn {
-      font-size: 1.6rem;
-      padding: 10px 14px;
-    }
-
-    #yt-play-center {
-      font-size: 2.2rem;
-      padding: 12px 18px;
     }
 
     /* ── Empty / error states ── */
@@ -399,301 +246,48 @@
 </div>
 
 <div id="player-overlay">
-  <div id="yt-container">
-    <video id="video-player" autoplay playsinline></video>
-
-    <div id="yt-controls">
-      <!-- Top bar: title + close -->
-      <div id="yt-top">
-        <div id="yt-title-text"></div>
-        <div style="flex:1"></div>
-        <button class="yt-btn" id="yt-close" title="Close (Esc)">&#x2715;</button>
-      </div>
-
-      <!-- Center: prev / -10 / play / +10 / next -->
-      <div id="yt-center">
-        <button class="yt-btn" id="yt-prev" title="Previous">&#9198;</button>
-        <button class="yt-btn" id="yt-rewind" title="-10s">&#8635; 10</button>
-        <button class="yt-btn" id="yt-play-center" title="Play/Pause">&#9654;</button>
-        <button class="yt-btn" id="yt-forward" title="+10s">10 &#8634;</button>
-        <button class="yt-btn" id="yt-next" title="Next">&#9197;</button>
-      </div>
-
-      <!-- Bottom: progress + bar row -->
-      <div id="yt-bottom">
-        <div id="yt-progress-wrap">
-          <div id="yt-buffered"></div>
-          <div id="yt-fill"></div>
-          <div id="yt-thumb"></div>
-        </div>
-        <div id="yt-bar-row">
-          <button class="yt-btn" id="yt-play2" title="Play/Pause">&#9654;</button>
-          <span id="yt-time">0:00 / 0:00</span>
-          <div style="flex:1"></div>
-          <button class="yt-btn" id="yt-mute" title="Mute">&#128266;</button>
-          <button class="yt-btn" id="yt-fs" title="Fullscreen">&#x26F6;</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <button id="close-player" title="Close (Esc)">&#x2715;</button>
+  <video id="player" controls crossorigin playsinline>
+    <source id="video-source" src="" type="video/mp4" />
+    <track id="subtitle-track" kind="subtitles" label="Subtitles" srclang="en" src="" default />
+  </video>
 </div>
 
 <script>
-  const SERVER = 'http://192.168.100.13:3001';
+  const SERVER_URL = 'http://192.168.100.13:3001';
 
   const grid = document.getElementById('grid-container');
   const loading = document.getElementById('loading');
   const breadcrumb = document.getElementById('breadcrumb');
   const countBar = document.getElementById('count-bar');
   const playerOverlay = document.getElementById('player-overlay');
-  const videoPlayer = document.getElementById('video-player');
-  const ytContainer = document.getElementById('yt-container');
-  const ytControls = document.getElementById('yt-controls');
-
-  const ytTitleText = document.getElementById('yt-title-text');
-  const ytClose = document.getElementById('yt-close');
-  const ytPrev = document.getElementById('yt-prev');
-  const ytNext = document.getElementById('yt-next');
-  const ytRewind = document.getElementById('yt-rewind');
-  const ytForward = document.getElementById('yt-forward');
-  const ytPlayCenter = document.getElementById('yt-play-center');
-  const ytPlay2 = document.getElementById('yt-play2');
-  const ytTime = document.getElementById('yt-time');
-  const ytFill = document.getElementById('yt-fill');
-  const ytBuffered = document.getElementById('yt-buffered');
-  const ytThumb = document.getElementById('yt-thumb');
-  const ytProgressWrap = document.getElementById('yt-progress-wrap');
-  const ytMute = document.getElementById('yt-mute');
-  const ytFs = document.getElementById('yt-fs');
 
   let currentPath = '';
-  let currentItem = null;
   let currentItems = [];
-  let currentIndex = -1;
-  let hlsInstance = null;
-  let hideTimer = null;
 
-  // ── HLS player ──────────────────────────────────────────────────────────────
+  // ── Plyr player ─────────────────────────────────────────────────────────────
 
-  function loadHls(item) {
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = null;
-    }
+  const plyr = new Plyr('#player');
 
-    videoPlayer.querySelectorAll('track').forEach(t => t.remove());
+  document.getElementById('close-player').addEventListener('click', closePlayer);
 
-    const playlistUrl = `${SERVER}/hls/playlist?path=${encodeURIComponent(item.relativePath)}`;
-    const subtitleUrl = `${SERVER}/subtitle?path=${encodeURIComponent(item.relativePath)}`;
-
-    const track = document.createElement('track');
-    track.kind = 'subtitles';
-    track.src = subtitleUrl;
-    track.default = true;
-    track.addEventListener('load', () => { track.track.mode = 'showing'; });
-    videoPlayer.appendChild(track);
-
-    if (Hls.isSupported()) {
-      hlsInstance = new Hls();
-      hlsInstance.loadSource(playlistUrl);
-      hlsInstance.attachMedia(videoPlayer);
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-        videoPlayer.play().catch(() => {});
-      });
-    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
-      videoPlayer.src = playlistUrl;
-      videoPlayer.play().catch(() => {});
-    }
-  }
-
-  // ── Controls UI ─────────────────────────────────────────────────────────────
-
-  function formatDuration(ms) {
-    if (!ms && ms !== 0) return '';
-    const totalSec = Math.round(ms / 1000);
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    const s = totalSec % 60;
-    if (h > 0) {
-      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-
-  function formatSec(sec) {
-    return formatDuration(sec * 1000);
-  }
-
-  function updatePlayButtons() {
-    const icon = videoPlayer.paused ? '&#9654;' : '&#9646;&#9646;';
-    ytPlayCenter.innerHTML = icon;
-    ytPlay2.innerHTML = icon;
-  }
-
-  function updateMuteButton() {
-    ytMute.innerHTML = videoPlayer.muted ? '&#128263;' : '&#128266;';
-  }
-
-  function updateNavButtons() {
-    ytPrev.disabled = currentIndex <= 0;
-    ytNext.disabled = currentIndex >= currentItems.length - 1;
-  }
-
-  // RAF loop: update progress fill, time, buffered
-  function rafLoop() {
-    if (!playerOverlay.classList.contains('active')) return;
-    requestAnimationFrame(rafLoop);
-
-    const dur = videoPlayer.duration;
-    const cur = videoPlayer.currentTime;
-
-    if (dur && isFinite(dur) && dur > 0) {
-      const pct = cur / dur;
-      ytFill.style.width = (pct * 100) + '%';
-      ytThumb.style.left = (pct * 100) + '%';
-
-      // Buffered
-      let buffEnd = 0;
-      for (let i = 0; i < videoPlayer.buffered.length; i++) {
-        if (videoPlayer.buffered.start(i) <= cur) {
-          buffEnd = Math.max(buffEnd, videoPlayer.buffered.end(i));
-        }
-      }
-      ytBuffered.style.width = (buffEnd / dur * 100) + '%';
-
-      ytTime.textContent = `${formatSec(cur)} / ${formatSec(dur)}`;
-    } else {
-      ytFill.style.width = '0%';
-      ytThumb.style.left = '0%';
-      ytTime.textContent = formatSec(cur) + ' / --:--';
-    }
-  }
-
-  // Auto-hide controls
-  function showControls() {
-    ytControls.classList.remove('yt-hidden');
-    clearTimeout(hideTimer);
-    if (!videoPlayer.paused) {
-      hideTimer = setTimeout(() => {
-        ytControls.classList.add('yt-hidden');
-      }, 3000);
-    }
-  }
-
-  ytContainer.addEventListener('mousemove', showControls);
-  ytContainer.addEventListener('click', showControls);
-
-  videoPlayer.addEventListener('pause', () => {
-    clearTimeout(hideTimer);
-    ytControls.classList.remove('yt-hidden');
-    updatePlayButtons();
-  });
-
-  videoPlayer.addEventListener('play', () => {
-    updatePlayButtons();
-    showControls();
-  });
-
-  // Progress bar seek
-  function seekFromEvent(e) {
-    const rect = ytProgressWrap.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const dur = videoPlayer.duration;
-    if (dur && isFinite(dur)) {
-      videoPlayer.currentTime = pct * dur;
-    }
-  }
-
-  let isDragging = false;
-  ytProgressWrap.addEventListener('mousedown', e => {
-    isDragging = true;
-    seekFromEvent(e);
-  });
-  document.addEventListener('mousemove', e => { if (isDragging) seekFromEvent(e); });
-  document.addEventListener('mouseup', () => { isDragging = false; });
-
-  // Buttons
-  function togglePlay() {
-    if (videoPlayer.paused) videoPlayer.play().catch(() => {});
-    else videoPlayer.pause();
-  }
-
-  ytPlayCenter.addEventListener('click', togglePlay);
-  ytPlay2.addEventListener('click', togglePlay);
-
-  ytRewind.addEventListener('click', () => { videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 10); });
-  ytForward.addEventListener('click', () => { videoPlayer.currentTime = Math.min(videoPlayer.duration || Infinity, videoPlayer.currentTime + 10); });
-
-  ytMute.addEventListener('click', () => {
-    videoPlayer.muted = !videoPlayer.muted;
-    updateMuteButton();
-  });
-
-  ytFs.addEventListener('click', () => {
-    if (!document.fullscreenElement) {
-      ytContainer.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen();
-    }
-  });
-
-  ytClose.addEventListener('click', closePlayer);
-
-  ytPrev.addEventListener('click', () => {
-    if (currentIndex > 0) playVideo(currentItems[currentIndex - 1]);
-  });
-
-  ytNext.addEventListener('click', () => {
-    if (currentIndex < currentItems.length - 1) playVideo(currentItems[currentIndex + 1]);
-  });
-
-  // Keyboard
   document.addEventListener('keydown', e => {
-    if (!playerOverlay.classList.contains('active')) return;
-    switch (e.key) {
-      case 'Escape': closePlayer(); break;
-      case ' ': e.preventDefault(); togglePlay(); break;
-      case 'ArrowLeft': videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 10); showControls(); break;
-      case 'ArrowRight': videoPlayer.currentTime = Math.min(videoPlayer.duration || Infinity, videoPlayer.currentTime + 10); showControls(); break;
-      case 'f': case 'F':
-        if (!document.fullscreenElement) ytContainer.requestFullscreen().catch(() => {});
-        else document.exitFullscreen();
-        break;
-      case 'm': case 'M':
-        videoPlayer.muted = !videoPlayer.muted;
-        updateMuteButton();
-        break;
-    }
+    if (playerOverlay.classList.contains('active') && e.key === 'Escape') closePlayer();
   });
-
-  // ── Video playback ───────────────────────────────────────────────────────────
 
   function playVideo(item) {
-    currentItem = item;
-    currentIndex = currentItems.indexOf(item);
-    updateNavButtons();
-
-    ytTitleText.textContent = item.name;
+    const base = SERVER_URL;
+    document.getElementById('video-source').src = `${base}/stream?path=${encodeURIComponent(item.relativePath)}`;
+    document.getElementById('subtitle-track').src = `${base}/subtitle?path=${encodeURIComponent(item.relativePath)}`;
+    plyr.media.load();
+    plyr.play();
     playerOverlay.classList.add('active');
-
-    loadHls(item);
-    updatePlayButtons();
-    updateMuteButton();
-    showControls();
-    requestAnimationFrame(rafLoop);
   }
 
   function closePlayer() {
-    videoPlayer.pause();
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = null;
-    }
-    videoPlayer.src = '';
+    plyr.pause();
+    plyr.media.src = '';
     playerOverlay.classList.remove('active');
-    currentItem = null;
-    clearTimeout(hideTimer);
     if (document.fullscreenElement) document.exitFullscreen();
   }
 
@@ -754,7 +348,7 @@
     buildBreadcrumb(currentPath);
 
     try {
-      const res = await fetch(`${SERVER}/api/browse?path=${encodeURIComponent(currentPath)}`);
+      const res = await fetch(`${SERVER_URL}/api/browse?path=${encodeURIComponent(currentPath)}`);
       const data = await res.json();
       loading.style.display = 'none';
 

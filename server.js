@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const mime = require('mime-types');
 const os = require('os');
-const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -98,26 +97,6 @@ app.get('/api/browse', (req, res) => {
   }
 });
 
-// API: get video duration via ffprobe
-app.get('/api/duration', (req, res) => {
-  const relPath = req.query.path || ''
-  const absPath = path.join(VIDEOS_DIR, relPath)
-  const args = [
-    '-v', 'quiet',
-    '-show_entries', 'format=duration',
-    '-of', 'csv=p=0',
-    absPath
-  ]
-  const probe = spawn('ffprobe', args)
-  let output = ''
-  probe.stdout.on('data', d => { output += d.toString() })
-  probe.on('close', code => {
-    const secs = parseFloat(output.trim())
-    if (isNaN(secs)) return res.status(404).json({ error: 'unknown duration' })
-    res.json({ durationMs: Math.round(secs * 1000) })
-  })
-})
-
 // Video streaming with range support
 app.get('/stream', (req, res) => {
   const subPath = req.query.path || '';
@@ -135,31 +114,6 @@ app.get('/stream', (req, res) => {
   const stat = fs.statSync(fullPath);
   if (!stat.isFile()) {
     return res.status(400).send('Not a file');
-  }
-
-  // Transcoded mode: re-encode audio to stereo AAC, mux into fragmented MP4
-  if (req.query.transcode) {
-    res.writeHead(200, { 'Content-Type': 'video/mp4' });
-
-    const startSec = parseFloat(req.query.start) || 0;
-
-    const ffmpeg = spawn('ffmpeg', [
-      '-ss', String(startSec),
-      '-i', fullPath,
-      '-vcodec', 'copy',
-      '-acodec', 'aac',
-      '-ac', '2',
-      '-output_ts_offset', String(startSec),
-      '-movflags', 'frag_keyframe+empty_moov',
-      '-f', 'mp4',
-      'pipe:1',
-    ]);
-
-    ffmpeg.stdout.pipe(res);
-    ffmpeg.stderr.on('data', () => {}); // suppress ffmpeg log output
-
-    req.on('close', () => ffmpeg.kill());
-    return;
   }
 
   const fileSize = stat.size;
@@ -189,86 +143,6 @@ app.get('/stream', (req, res) => {
     });
     fs.createReadStream(fullPath).pipe(res);
   }
-});
-
-// HLS playlist endpoint
-app.get('/hls/playlist', (req, res) => {
-  const relPath = req.query.path || '';
-  const fullPath = path.resolve(path.join(VIDEOS_DIR, relPath));
-
-  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
-    return res.status(403).send('Access denied');
-  }
-
-  if (!fs.existsSync(fullPath)) {
-    return res.status(404).send('File not found');
-  }
-
-  const args = ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', fullPath];
-  const probe = spawn('ffprobe', args);
-  let output = '';
-  probe.stdout.on('data', d => { output += d.toString(); });
-  probe.on('close', () => {
-    const totalSec = parseFloat(output.trim());
-    if (isNaN(totalSec)) return res.status(500).send('Could not determine duration');
-
-    const segDur = 10;
-    const numSegs = Math.ceil(totalSec / segDur);
-    const encodedPath = encodeURIComponent(relPath);
-
-    let m3u8 = '#EXTM3U\n';
-    m3u8 += '#EXT-X-VERSION:3\n';
-    m3u8 += `#EXT-X-TARGETDURATION:${segDur}\n`;
-    m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
-
-    for (let i = 0; i < numSegs; i++) {
-      const start = i * segDur;
-      const dur = Math.min(segDur, totalSec - start);
-      m3u8 += `#EXTINF:${dur.toFixed(3)},\n`;
-      m3u8 += `/hls/segment?path=${encodedPath}&index=${i}\n`;
-    }
-
-    m3u8 += '#EXT-X-ENDLIST\n';
-
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(m3u8);
-  });
-});
-
-// HLS segment endpoint
-app.get('/hls/segment', (req, res) => {
-  const relPath = req.query.path || '';
-  const fullPath = path.resolve(path.join(VIDEOS_DIR, relPath));
-  const index = parseInt(req.query.index) || 0;
-
-  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
-    return res.status(403).send('Access denied');
-  }
-
-  if (!fs.existsSync(fullPath)) {
-    return res.status(404).send('File not found');
-  }
-
-  const start = index * 10;
-
-  res.setHeader('Content-Type', 'video/mp2t');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  const ffmpeg = spawn('ffmpeg', [
-    '-ss', String(start),
-    '-i', fullPath,
-    '-t', '10',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-    '-c:a', 'aac', '-ac', '2',
-    '-avoid_negative_ts', 'make_zero',
-    '-f', 'mpegts',
-    'pipe:1',
-  ]);
-
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.stderr.on('data', () => {});
-  req.on('close', () => ffmpeg.kill());
 });
 
 // Subtitle serving (VTT or SRT→VTT on the fly)
@@ -321,15 +195,6 @@ app.get('/image', (req, res) => {
   res.setHeader('Content-Type', mimeType);
   fs.createReadStream(fullPath).pipe(res);
 });
-
-// Warn if ffmpeg is not available (needed for audio transcoding)
-try {
-  execSync('which ffmpeg', { stdio: 'ignore' });
-} catch {
-  console.warn('  WARNING: ffmpeg not found in PATH. Audio transcoding will not work.');
-  console.warn('  Install it with: brew install ffmpeg');
-  console.warn('');
-}
 
 app.listen(PORT, '0.0.0.0', () => {
   const ip = getNetworkIP();
