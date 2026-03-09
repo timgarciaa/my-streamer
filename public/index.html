@@ -486,6 +486,13 @@
     const playlistUrl = `${SERVER}/hls/playlist?path=${encodeURIComponent(item.relativePath)}`;
     const subtitleUrl = `${SERVER}/subtitle?path=${encodeURIComponent(item.relativePath)}`;
 
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.src = subtitleUrl;
+    track.default = true;
+    track.addEventListener('load', () => { track.track.mode = 'showing'; });
+    videoPlayer.appendChild(track);
+
     if (Hls.isSupported()) {
       hlsInstance = new Hls();
       hlsInstance.loadSource(playlistUrl);
@@ -498,12 +505,6 @@
       videoPlayer.src = playlistUrl;
       videoPlayer.play().catch(() => {});
     }
-
-    const track = document.createElement('track');
-    track.kind = 'subtitles';
-    track.src = subtitleUrl;
-    track.default = true;
-    videoPlayer.appendChild(track);
   }
 
   // ── Controls UI ─────────────────────────────────────────────────────────────

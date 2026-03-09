@@ -259,9 +259,9 @@ app.get('/hls/segment', (req, res) => {
     '-ss', String(start),
     '-i', fullPath,
     '-t', '10',
-    '-vcodec', 'copy',
-    '-acodec', 'aac',
-    '-ac', '2',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+    '-c:a', 'aac', '-ac', '2',
+    '-avoid_negative_ts', 'make_zero',
     '-f', 'mpegts',
     'pipe:1',
   ]);
