@@ -98,6 +98,26 @@ app.get('/api/browse', (req, res) => {
   }
 });
 
+// API: get video duration via ffprobe
+app.get('/api/duration', (req, res) => {
+  const relPath = req.query.path || ''
+  const absPath = path.join(VIDEOS_DIR, relPath)
+  const args = [
+    '-v', 'quiet',
+    '-show_entries', 'format=duration',
+    '-of', 'csv=p=0',
+    absPath
+  ]
+  const probe = spawn('ffprobe', args)
+  let output = ''
+  probe.stdout.on('data', d => { output += d.toString() })
+  probe.on('close', code => {
+    const secs = parseFloat(output.trim())
+    if (isNaN(secs)) return res.status(404).json({ error: 'unknown duration' })
+    res.json({ durationMs: Math.round(secs * 1000) })
+  })
+})
+
 // Video streaming with range support
 app.get('/stream', (req, res) => {
   const subPath = req.query.path || '';
