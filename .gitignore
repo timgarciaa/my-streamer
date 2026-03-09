@@ -2,3 +2,31 @@ node_modules/
 .env
 .DS_Store
 .claude/
+
+# Android build outputs and caches
+android/.gradle/
+android/app/build/
+android/build/
+android/.kotlin/
+
+# Android local machine config
+android/local.properties
+
+# Android Studio IDE state
+android/.idea/workspace.xml
+android/.idea/tasks.xml
+android/.idea/gradle.xml
+android/.idea/assetWizardSettings.xml
+android/.idea/dictionaries
+android/.idea/libraries
+android/.idea/caches
+android/.idea/modules.xml
+android/.idea/navEditor.xml
+android/.idea/deploymentTargetDropDown.xml
+
+# Compiled/generated artifacts
+android/**/*.class
+android/**/*.dex
+android/**/*.ap_
+android/**/*.apk
+android/**/*.aab
