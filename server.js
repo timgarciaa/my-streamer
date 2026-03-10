@@ -8,6 +8,15 @@ const os = require('os');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} → ${res.statusCode} (${ms}ms)`);
+  });
+  next();
+});
+
 // Configure your videos directory here
 const VIDEOS_DIR = process.env.VIDEOS_DIR || path.join(os.homedir(), 'Videos');
 
@@ -134,6 +143,7 @@ app.get('/stream', (req, res) => {
     });
 
     const stream = fs.createReadStream(fullPath, { start, end });
+    stream.on('error', err => console.error(`[stream error] ${fullPath}: ${err.message}`));
     stream.pipe(res);
   } else {
     res.writeHead(200, {

@@ -277,9 +277,11 @@
 
   function playVideo(item) {
     const base = SERVER_URL;
-    document.getElementById('video-source').src = `${base}/stream?path=${encodeURIComponent(item.relativePath)}`;
-    document.getElementById('subtitle-track').src = `${base}/subtitle?path=${encodeURIComponent(item.relativePath)}`;
-    plyr.media.load();
+    plyr.source = {
+      type: 'video',
+      sources: [{ src: `${base}/stream?path=${encodeURIComponent(item.relativePath)}`, type: 'video/mp4' }],
+      tracks: [{ kind: 'subtitles', label: 'Subtitles', srclang: 'en', src: `${base}/subtitle?path=${encodeURIComponent(item.relativePath)}`, default: true }],
+    };
     plyr.play();
     playerOverlay.classList.add('active');
   }
