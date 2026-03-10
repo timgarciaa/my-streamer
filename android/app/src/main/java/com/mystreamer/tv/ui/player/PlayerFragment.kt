@@ -14,6 +14,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.mystreamer.tv.R
 import com.mystreamer.tv.data.prefs.ServerPreferences
@@ -52,7 +53,15 @@ class PlayerFragment : Fragment() {
         playerView.controllerHideOnTouch = true
         playerView.controllerShowTimeoutMs = 3000
 
-        player = ExoPlayer.Builder(requireContext()).build()
+        val trackSelector = DefaultTrackSelector(requireContext()).apply {
+            setParameters(buildUponParameters()
+                .setPreferredTextLanguage("en")
+                .setSelectUndeterminedTextLanguage(true)
+            )
+        }
+        player = ExoPlayer.Builder(requireContext())
+            .setTrackSelector(trackSelector)
+            .build()
         playerView.player = player
 
         // Wire up custom control buttons from player_controls.xml

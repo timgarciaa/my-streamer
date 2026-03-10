@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const mime = require('mime-types');
 const os = require('os');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -183,6 +184,41 @@ app.get('/subtitle', (req, res) => {
       .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
     res.setHeader('Content-Type', 'text/vtt');
     return res.send(vtt);
+  }
+
+  // Fallback: try embedded subtitles for MKV files
+  const ext = path.extname(fullPath).toLowerCase();
+  if (ext === '.mkv') {
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'quiet', '-print_format', 'json',
+      '-show_streams', '-select_streams', 's', fullPath
+    ]);
+    let probeOut = '';
+    ffprobe.stdout.on('data', d => { probeOut += d; });
+    ffprobe.on('close', code => {
+      let streams = [];
+      try { streams = JSON.parse(probeOut).streams || []; } catch (_) {}
+      if (code !== 0 || streams.length === 0) {
+        return res.status(404).send('No subtitle found');
+      }
+      // Prefer English; fall back to first stream
+      const engIdx = streams.findIndex(s =>
+        s.tags?.language === 'eng' || s.tags?.language === 'en'
+      );
+      const streamIndex = engIdx >= 0 ? engIdx : 0;
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', fullPath, '-map', `0:s:${streamIndex}`, '-f', 'webvtt', 'pipe:1'
+      ]);
+      ffmpeg.stderr.resume();
+      res.setHeader('Content-Type', 'text/vtt');
+      ffmpeg.stdout.pipe(res);
+      ffmpeg.on('error', err => {
+        console.error(`[subtitle error] ${fullPath}: ${err.message}`);
+        if (!res.headersSent) res.status(404).send('No subtitle found');
+      });
+    });
+    ffprobe.on('error', () => res.status(404).send('No subtitle found'));
+    return;
   }
 
   res.status(404).send('No subtitle found');
