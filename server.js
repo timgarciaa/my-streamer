@@ -201,17 +201,34 @@ app.get('/subtitle', (req, res) => {
       if (code !== 0 || streams.length === 0) {
         return res.status(404).send('No subtitle found');
       }
-      // Prefer English; fall back to first stream
-      const engIdx = streams.findIndex(s =>
+      // Filter out image-based subtitle codecs (PGS, VOBSUB) — not convertible to WebVTT
+      const TEXT_SUBTITLE_CODECS = new Set([
+        'subrip', 'srt', 'ass', 'ssa', 'webvtt', 'mov_text', 'text', 'hdmv_text_subtitle'
+      ]);
+      const textStreams = streams.filter(s => TEXT_SUBTITLE_CODECS.has(s.codec_name));
+      if (textStreams.length === 0) {
+        return res.status(404).send('No subtitle found');
+      }
+      // Prefer English; fall back to first text stream
+      const engStream = textStreams.find(s =>
         s.tags?.language === 'eng' || s.tags?.language === 'en'
       );
-      const streamIndex = engIdx >= 0 ? engIdx : 0;
+      const selectedStream = engStream || textStreams[0];
+      const streamIndex = streams.indexOf(selectedStream);
       const ffmpeg = spawn('ffmpeg', [
         '-i', fullPath, '-map', `0:s:${streamIndex}`, '-f', 'webvtt', 'pipe:1'
       ]);
       ffmpeg.stderr.resume();
       res.setHeader('Content-Type', 'text/vtt');
-      ffmpeg.stdout.pipe(res);
+      let dataSent = false;
+      ffmpeg.stdout.on('data', chunk => { dataSent = true; res.write(chunk); });
+      ffmpeg.stdout.on('end', () => res.end());
+      ffmpeg.on('close', code => {
+        if (code !== 0 && !dataSent) {
+          if (!res.headersSent) res.status(500).send('Subtitle conversion failed');
+          else res.end();
+        }
+      });
       ffmpeg.on('error', err => {
         console.error(`[subtitle error] ${fullPath}: ${err.message}`);
         if (!res.headersSent) res.status(404).send('No subtitle found');
