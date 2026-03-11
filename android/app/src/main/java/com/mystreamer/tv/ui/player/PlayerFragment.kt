@@ -17,6 +17,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.mystreamer.tv.R
+import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.TrackSelectionOverride
 import com.mystreamer.tv.data.prefs.ServerPreferences
 import com.mystreamer.tv.data.util.UrlBuilder
 
@@ -34,6 +37,7 @@ class PlayerFragment : Fragment() {
     private lateinit var serverPrefs: ServerPreferences
 
     private var filePath: String = ""
+    private lateinit var trackSelector: DefaultTrackSelector
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -53,7 +57,7 @@ class PlayerFragment : Fragment() {
         playerView.controllerHideOnTouch = true
         playerView.controllerShowTimeoutMs = 3000
 
-        val trackSelector = DefaultTrackSelector(requireContext()).apply {
+        trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(buildUponParameters()
                 .setPreferredTextLanguage("en")
                 .setSelectUndeterminedTextLanguage(true)
@@ -63,6 +67,15 @@ class PlayerFragment : Fragment() {
             .setTrackSelector(trackSelector)
             .build()
         playerView.player = player
+
+        player.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                forceTextTrackIfNoneSelected(tracks)
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playerView.keepScreenOn = isPlaying
+            }
+        })
 
         // Wire up custom control buttons from player_controls.xml
         playerView.findViewById<TextView>(R.id.video_title)?.text = title
@@ -93,6 +106,25 @@ class PlayerFragment : Fragment() {
         player.setMediaItem(mediaItem)
         player.prepare()
         player.play()
+    }
+
+    private fun forceTextTrackIfNoneSelected(tracks: Tracks) {
+        val anyTextSelected = tracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_TEXT && group.isSelected
+        }
+        if (anyTextSelected) return
+
+        val firstTextGroup = tracks.groups.firstOrNull { group ->
+            group.type == C.TRACK_TYPE_TEXT &&
+            group.length > 0 &&
+            (0 until group.length).any { i -> group.isTrackSupported(i) }
+        } ?: return
+
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .setOverrideForType(TrackSelectionOverride(firstTextGroup.mediaTrackGroup, emptyList()))
+                .setSelectUndeterminedTextLanguage(true)
+        )
     }
 
     fun seekForward() {
