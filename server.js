@@ -186,8 +186,28 @@ app.get('/subtitle', (req, res) => {
     return res.send(vtt);
   }
 
-  // Fallback: try embedded subtitles for MKV files
+  // Fallback: scan directory for any .srt or .vtt file (non-MKV)
   const ext = path.extname(fullPath).toLowerCase();
+  if (ext !== '.mkv') {
+    const dir = path.dirname(fullPath);
+    const anySubtitle = fs.readdirSync(dir).find(f => f.endsWith('.srt') || f.endsWith('.vtt'));
+    if (anySubtitle) {
+      const subFull = path.join(dir, anySubtitle);
+      if (anySubtitle.endsWith('.vtt')) {
+        res.setHeader('Content-Type', 'text/vtt');
+        return fs.createReadStream(subFull).pipe(res);
+      }
+      const srt = fs.readFileSync(subFull, 'utf8');
+      const vtt = 'WEBVTT\n\n' + srt
+        .replace(/\r\n/g, '\n')
+        .replace(/^\d+\n/gm, '')
+        .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+      res.setHeader('Content-Type', 'text/vtt');
+      return res.send(vtt);
+    }
+  }
+
+  // Fallback: try embedded subtitles for MKV files
   if (ext === '.mkv') {
     const ffprobe = spawn('ffprobe', [
       '-v', 'quiet', '-print_format', 'json',
@@ -282,9 +302,11 @@ app.get('/subtitle-tracks', (req, res) => {
     return;
   }
 
-  // Non-MKV: check for sidecar
+  // Non-MKV: check for same-name sidecar or any .srt/.vtt in the directory
   const base = fullPath.replace(/\.[^.]+$/, '');
-  const hasSidecar = fs.existsSync(base + '.vtt') || fs.existsSync(base + '.srt');
+  const dir = path.dirname(fullPath);
+  const hasSidecar = fs.existsSync(base + '.vtt') || fs.existsSync(base + '.srt') ||
+    fs.readdirSync(dir).some(f => f.endsWith('.srt') || f.endsWith('.vtt'));
   res.json({ tracks: hasSidecar ? [{ index: 0, language: 'und', title: 'Default' }] : [] });
 });
 

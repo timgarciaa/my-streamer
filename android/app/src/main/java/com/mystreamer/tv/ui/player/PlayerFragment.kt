@@ -125,16 +125,7 @@ playerView.findViewById<Button>(R.id.cc_button)?.setOnClickListener { showSubtit
                     .build()
             }
 
-            // Fall back to single subtitle if no tracks found (old behavior)
-            val finalConfigs = if (subtitleConfigs.isEmpty()) {
-                listOf(
-                    SubtitleConfiguration.Builder(Uri.parse(UrlBuilder.subtitleUrl(baseUrl, filePath)))
-                        .setMimeType(MimeTypes.TEXT_VTT)
-                        .setLanguage("en")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-                )
-            } else subtitleConfigs
+            val finalConfigs = subtitleConfigs
 
             val mediaItem = MediaItem.Builder()
                 .setUri(Uri.parse(UrlBuilder.streamUrl(baseUrl, filePath)))
