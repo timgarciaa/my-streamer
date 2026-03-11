@@ -18,9 +18,13 @@ class PlayerActivity : FragmentActivity() {
         if (event.action == KeyEvent.ACTION_DOWN) {
             val fragment = supportFragmentManager
                 .findFragmentById(R.id.player_frame) as? PlayerFragment
-            when (event.keyCode) {
-                KeyEvent.KEYCODE_DPAD_RIGHT -> { fragment?.seekForward(); return true }
-                KeyEvent.KEYCODE_DPAD_LEFT  -> { fragment?.seekBackward(); return true }
+            // Only intercept left/right for seeking when the controls overlay is hidden.
+            // When controls are visible, let the event through for d-pad focus navigation.
+            if (fragment != null && !fragment.isControllerVisible()) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> { fragment.seekForward(); return true }
+                    KeyEvent.KEYCODE_DPAD_LEFT  -> { fragment.seekBackward(); return true }
+                }
             }
         }
         return super.dispatchKeyEvent(event)

@@ -1,13 +1,17 @@
 package com.mystreamer.tv.ui.player
 
+import android.app.AlertDialog
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.SubtitleConfiguration
 import androidx.media3.common.MimeTypes
@@ -17,11 +21,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.mystreamer.tv.R
+import androidx.media3.ui.R as MediaR
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
+import com.mystreamer.tv.data.model.SubtitleTrack
+import com.mystreamer.tv.data.network.RetrofitClient
 import com.mystreamer.tv.data.prefs.ServerPreferences
 import com.mystreamer.tv.data.util.UrlBuilder
+import kotlinx.coroutines.launch
 
 @UnstableApi
 class PlayerFragment : Fragment() {
@@ -38,6 +46,9 @@ class PlayerFragment : Fragment() {
 
     private var filePath: String = ""
     private lateinit var trackSelector: DefaultTrackSelector
+    private var availableSubtitleTracks: List<SubtitleTrack> = emptyList()
+    private var textTrackGroups: List<Tracks.Group> = emptyList()
+    private var userDisabledSubtitles = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -55,7 +66,7 @@ class PlayerFragment : Fragment() {
         playerView.useController = true
         playerView.controllerAutoShow = true
         playerView.controllerHideOnTouch = true
-        playerView.controllerShowTimeoutMs = 3000
+        playerView.controllerShowTimeoutMs = 5000
 
         trackSelector = DefaultTrackSelector(requireContext()).apply {
             setParameters(buildUponParameters()
@@ -70,10 +81,15 @@ class PlayerFragment : Fragment() {
 
         player.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
-                forceTextTrackIfNoneSelected(tracks)
+                textTrackGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                if (!userDisabledSubtitles) forceTextTrackIfNoneSelected(tracks)
+                updateCcButtonState()
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playerView.keepScreenOn = isPlaying
+                val color = if (isPlaying) 0xFFE94560.toInt() else 0xFFFFFFFF.toInt()
+                playerView.findViewById<ImageButton>(MediaR.id.exo_play_pause)
+                    ?.imageTintList = ColorStateList.valueOf(color)
             }
         })
 
@@ -81,31 +97,92 @@ class PlayerFragment : Fragment() {
         playerView.findViewById<TextView>(R.id.video_title)?.text = title
         playerView.findViewById<Button>(R.id.rewind_button)?.setOnClickListener { seekBackward() }
         playerView.findViewById<Button>(R.id.forward_button)?.setOnClickListener { seekForward() }
-        playerView.findViewById<Button>(R.id.prev_button)?.isEnabled = false
-        playerView.findViewById<Button>(R.id.next_button)?.isEnabled = false
+playerView.findViewById<Button>(R.id.cc_button)?.setOnClickListener { showSubtitleDialog() }
+
+        // Set initial white tint before first onIsPlayingChanged fires
+        playerView.findViewById<ImageButton>(MediaR.id.exo_play_pause)
+            ?.imageTintList = ColorStateList.valueOf(0xFFFFFFFF.toInt())
 
         loadMedia()
     }
 
     private fun loadMedia() {
         val baseUrl = serverPrefs.serverUrl
-        val streamUrl = UrlBuilder.streamUrl(baseUrl, filePath)
-        val subtitleUrl = UrlBuilder.subtitleUrl(baseUrl, filePath)
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.subtitleTracks(filePath)
+                availableSubtitleTracks = response.tracks
+            } catch (e: Exception) {
+                availableSubtitleTracks = emptyList()
+            }
 
-        val subtitleConfig = SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-            .setMimeType(MimeTypes.TEXT_VTT)
-            .setLanguage("en")
-            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-            .build()
+            val subtitleConfigs = availableSubtitleTracks.map { track ->
+                SubtitleConfiguration.Builder(Uri.parse(UrlBuilder.subtitleUrl(baseUrl, filePath, track.index)))
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setLanguage(track.language)
+                    .setLabel(track.title)
+                    .setSelectionFlags(if (track.index == 0) C.SELECTION_FLAG_DEFAULT else 0)
+                    .build()
+            }
 
-        val mediaItem = MediaItem.Builder()
-            .setUri(Uri.parse(streamUrl))
-            .setSubtitleConfigurations(listOf(subtitleConfig))
-            .build()
+            // Fall back to single subtitle if no tracks found (old behavior)
+            val finalConfigs = if (subtitleConfigs.isEmpty()) {
+                listOf(
+                    SubtitleConfiguration.Builder(Uri.parse(UrlBuilder.subtitleUrl(baseUrl, filePath)))
+                        .setMimeType(MimeTypes.TEXT_VTT)
+                        .setLanguage("en")
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            } else subtitleConfigs
 
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.play()
+            val mediaItem = MediaItem.Builder()
+                .setUri(Uri.parse(UrlBuilder.streamUrl(baseUrl, filePath)))
+                .setSubtitleConfigurations(finalConfigs)
+                .build()
+
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+        }
+    }
+
+    private fun showSubtitleDialog() {
+        val options = mutableListOf("Off")
+        if (availableSubtitleTracks.isEmpty()) {
+            textTrackGroups.forEachIndexed { i, _ -> options.add("Subtitle ${i + 1}") }
+        } else {
+            availableSubtitleTracks.forEach { options.add(it.title) }
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Subtitles")
+            .setItems(options.toTypedArray()) { _, which ->
+                if (which == 0) {
+                    userDisabledSubtitles = true
+                    trackSelector.setParameters(
+                        trackSelector.buildUponParameters()
+                            .setDisabledTrackTypes(setOf(C.TRACK_TYPE_TEXT))
+                    )
+                } else {
+                    userDisabledSubtitles = false
+                    val groupIndex = which - 1
+                    val group = textTrackGroups.getOrNull(groupIndex) ?: return@setItems
+                    trackSelector.setParameters(
+                        trackSelector.buildUponParameters()
+                            .setDisabledTrackTypes(emptySet())
+                            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(0)))
+                    )
+                }
+                updateCcButtonState()
+            }
+            .show()
+    }
+
+    private fun updateCcButtonState() {
+        val active = !userDisabledSubtitles && textTrackGroups.any { it.isSelected }
+        val color = if (active) 0xFFE94560.toInt() else 0xFFFFFFFF.toInt()
+        playerView.findViewById<Button>(R.id.cc_button)?.setTextColor(color)
     }
 
     private fun forceTextTrackIfNoneSelected(tracks: Tracks) {
@@ -126,6 +203,8 @@ class PlayerFragment : Fragment() {
                 .setSelectUndeterminedTextLanguage(true)
         )
     }
+
+    fun isControllerVisible(): Boolean = playerView.isControllerFullyVisible
 
     fun seekForward() {
         val newPos = player.currentPosition + SEEK_INCREMENT_MS

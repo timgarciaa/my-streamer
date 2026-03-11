@@ -209,11 +209,18 @@ app.get('/subtitle', (req, res) => {
       if (textStreams.length === 0) {
         return res.status(404).send('No subtitle found');
       }
-      // Prefer English; fall back to first text stream
-      const engStream = textStreams.find(s =>
-        s.tags?.language === 'eng' || s.tags?.language === 'en'
-      );
-      const selectedStream = engStream || textStreams[0];
+      // If caller specified a stream index, use it directly
+      const requestedStream = parseInt(req.query.stream, 10);
+      let selectedStream;
+      if (!isNaN(requestedStream) && requestedStream >= 0 && requestedStream < textStreams.length) {
+        selectedStream = textStreams[requestedStream];
+      } else {
+        // Prefer English; fall back to first text stream
+        const engStream = textStreams.find(s =>
+          s.tags?.language === 'eng' || s.tags?.language === 'en'
+        );
+        selectedStream = engStream || textStreams[0];
+      }
       const streamIndex = streams.indexOf(selectedStream);
       const ffmpeg = spawn('ffmpeg', [
         '-i', fullPath, '-map', `0:s:${streamIndex}`, '-f', 'webvtt', 'pipe:1'
@@ -239,6 +246,46 @@ app.get('/subtitle', (req, res) => {
   }
 
   res.status(404).send('No subtitle found');
+});
+
+// Subtitle track listing (for MKV embedded tracks)
+app.get('/subtitle-tracks', (req, res) => {
+  const subPath = req.query.path || '';
+  const fullPath = path.resolve(path.join(VIDEOS_DIR, subPath));
+  if (!fullPath.startsWith(path.resolve(VIDEOS_DIR))) {
+    return res.status(403).send('Access denied');
+  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  const ext = path.extname(fullPath).toLowerCase();
+  if (ext === '.mkv') {
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'quiet', '-print_format', 'json',
+      '-show_streams', '-select_streams', 's', fullPath
+    ]);
+    let probeOut = '';
+    ffprobe.stdout.on('data', d => { probeOut += d; });
+    ffprobe.on('close', () => {
+      let streams = [];
+      try { streams = JSON.parse(probeOut).streams || []; } catch (_) {}
+      const TEXT_SUBTITLE_CODECS = new Set(['subrip','srt','ass','ssa','webvtt','mov_text','text','hdmv_text_subtitle']);
+      const tracks = streams
+        .filter(s => TEXT_SUBTITLE_CODECS.has(s.codec_name))
+        .map((s, i) => ({
+          index: i,
+          language: s.tags?.language || 'und',
+          title: s.tags?.title || s.tags?.language || `Track ${i + 1}`
+        }));
+      res.json({ tracks });
+    });
+    ffprobe.on('error', () => res.json({ tracks: [] }));
+    return;
+  }
+
+  // Non-MKV: check for sidecar
+  const base = fullPath.replace(/\.[^.]+$/, '');
+  const hasSidecar = fs.existsSync(base + '.vtt') || fs.existsSync(base + '.srt');
+  res.json({ tracks: hasSidecar ? [{ index: 0, language: 'und', title: 'Default' }] : [] });
 });
 
 // Thumbnail/image serving
